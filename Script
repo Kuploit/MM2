@@ -1,13 +1,33 @@
 -- Trades v3.3
 -- Тёмная тема, перетаскивание, сворачивание, закрытие, индикатор статуса
--- Поверх всех остальных GUI (высокий DisplayOrder)
+-- Размещается в CoreGui (gethui), чтобы быть поверх инвентаря и прочих GUI
 
 local TweenService = game:GetService("TweenService")
 local UserInputService = game:GetService("UserInputService")
 local Players = game:GetService("Players")
+local CoreGui = game:GetService("CoreGui")
+local RunService = game:GetService("RunService")
 
 local player = Players.LocalPlayer
-local playerGui = player:WaitForChild("PlayerGui")
+
+-- Выбираем максимально "высокий" контейнер для GUI
+local function getGuiParent()
+	-- Лучший вариант: скрытый контейнер эксплойта (поверх всего, защищён от обнаружения)
+	local ok, hidden = pcall(function()
+		if typeof(gethui) == "function" then return gethui() end
+		if typeof(get_hidden_gui) == "function" then return get_hidden_gui() end
+	end)
+	if ok and hidden then return hidden end
+
+	-- Иначе пробуем CoreGui (выше PlayerGui)
+	local ok2 = pcall(function() return CoreGui:GetChildren() end)
+	if ok2 then return CoreGui end
+
+	-- Фолбэк: PlayerGui
+	return player:WaitForChild("PlayerGui")
+end
+
+local guiParent = getGuiParent()
 
 -- Цвета (тёмная тема)
 local COLOR_BG      = Color3.fromRGB(28, 28, 32)
@@ -25,9 +45,13 @@ local gui = Instance.new("ScreenGui")
 gui.Name = "TradesV33"
 gui.ResetOnSpawn = false
 gui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
-gui.DisplayOrder = 2147483647 -- максимум: всегда поверх остальных GUI
+gui.DisplayOrder = 2147483647 -- максимум
 gui.IgnoreGuiInset = true
-gui.Parent = playerGui
+pcall(function() gui.Parent = guiParent end)
+-- если по какой-то причине не приклеилось — фолбэк в PlayerGui
+if not gui.Parent then
+	gui.Parent = player:WaitForChild("PlayerGui")
+end
 
 -- Главное окно
 local main = Instance.new("Frame")
@@ -111,7 +135,7 @@ local minCorner = Instance.new("UICorner")
 minCorner.CornerRadius = UDim.new(0, 8)
 minCorner.Parent = minimizeBtn
 
--- Кнопка закрытия (крестик нарисован двумя полосками — отображается всегда)
+-- Кнопка закрытия
 local closeBtn = Instance.new("TextButton")
 closeBtn.Name = "Close"
 closeBtn.Size = UDim2.new(0, 28, 0, 28)
@@ -311,6 +335,25 @@ UserInputService.InputChanged:Connect(function(input)
 			startPos.X.Scale, startPos.X.Offset + delta.X,
 			startPos.Y.Scale, startPos.Y.Offset + delta.Y
 		)
+	end
+end)
+
+-- Постоянно держим окно поверх: если кто-то создал GUI с большим DisplayOrder,
+-- поднимаем свой выше. Также возвращаем GUI в контейнер, если его убрали.
+task.spawn(function()
+	while gui and gui.Parent do
+		local maxOrder = 0
+		pcall(function()
+			for _, sg in ipairs(guiParent:GetChildren()) do
+				if sg:IsA("ScreenGui") and sg ~= gui and sg.DisplayOrder > maxOrder then
+					maxOrder = sg.DisplayOrder
+				end
+			end
+		end)
+		if maxOrder >= gui.DisplayOrder then
+			gui.DisplayOrder = maxOrder + 1
+		end
+		task.wait(0.5)
 	end
 end)
 
